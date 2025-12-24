@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高爾頓板 - 常態分佈演示</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body {
+            font-family: "Microsoft JhengHei", sans-serif;
+            background: #1a1a1a;
+            color: #eee;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        h1 {
+            color: #4CAF50;
+            margin: 10px 0;
+        }
+        .controls {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .btn-add {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-add:hover {
+            background: #45a049;
+        }
+        .btn-reset {
+            background: #f44336;
+            color: white;
+        }
+        .btn-reset:hover {
+            background: #da190b;
+        }
+        #canvas {
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .info {
+            margin-top: 10px; 
+            color: #888;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1> 高爾頓板 (Galton Board)</h1>
+    <div class="controls">
+        <span>球數: <strong id="count">0</strong></span>
+        <button class="btn-add" onclick="addBalls(50)">+50 顆球</button>
+        <button class="btn-add" onclick="addBalls(200)">+200 顆球</button>
+        <button class="btn-reset" onclick="reset()">重置</button>
+    </div>
+    <div id="canvas"></div>
+    <div class="info">觀察常態分佈 (Normal Distribution) 的形成</div>
+
+    <script>
+        const { Engine, Render, Runner, Bodies, Composite, Common } = Matter;
+        
+        const eng = Engine.create();
+        eng.gravity.y = 1;
+        
+        const W = 700;
+        const H = 850;
+        const rows = 12;
+        const pr = 4;
+        const gap = 45;
+        const sy = 150;
+        const br = 5;
+        
+        const rdr = Render.create({
+            element: document.getElementById('canvas'),
+            engine: eng,
+            options: {
+                width: W,
+                height: H,
+                wireframes: false,
+                background: '#1a1a1a'
+            }
+        });
+        
+        let cnt = 0;
+        const disp = document.getElementById('count');
+        
+        for (let i = 0; i < rows; i++) {
+            const n = i + 1;
+            for (let j = 0; j < n; j++) {
+                const px = (W / 2) - ((n - 1) * gap / 2) + (j * gap);
+                const py = sy + i * 50;
+                
+                const p = Bodies.circle(px, py, pr, {
+                    isStatic: true,
+                    render: { fillStyle: '#ffffff' },
+                    restitution: 0.1,
+                    friction: 0.05,
+                    slop: 0
+                });
+                Composite.add(eng.world, p);
+            }
+        }
+        
+        const bh = 200;
+        const by = H - bh / 2 - 20;
+        const bsx = (W / 2) - ((rows - 1) * gap / 2) - (gap / 2);
+        
+        for (let i = 0; i <= rows; i++) {
+            const wx = bsx + i * gap;
+            const w = Bodies.rectangle(wx, by, 2, bh, {
+                isStatic: true,
+                render: { fillStyle: '#666' }
+            });
+            Composite.add(eng.world, w);
+        }
+        
+        Composite.add(eng.world, [
+            Bodies.rectangle(W / 2, H - 10, W, 20, {
+                isStatic: true,
+                render: { fillStyle: '#444' }
+            }),
+            Bodies.rectangle(0, H / 2, 20, H, {
+                isStatic: true,
+                render: { fillStyle: '#444' }
+            }),
+            Bodies.rectangle(W, H / 2, 20, H, {
+                isStatic: true,
+                render: { fillStyle: '#444' }
+            })
+        ]);
+        
+        function spawnBall() {
+            const cols = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8'];
+            const off = Common.random(-0.1, 0.1);
+            const b = Bodies.circle(W / 2 + off, 50, br, {
+                restitution: 0.1,
+                friction: 0.05,
+                frictionAir: 0.01,
+                density: 0.004,
+                render: {
+                    fillStyle: cols[Math.floor(Math.random() * cols.length)]
+                }
+            });
+            Composite.add(eng.world, b);
+            cnt++;
+            disp.textContent = cnt;
+        }
+        
+        function addBalls(n) {
+            let c = 0;
+            const iv = setInterval(() => {
+                spawnBall();
+                c++;
+                if (c >= n) clearInterval(iv);
+            }, 100);
+        }
+        
+        function reset() {
+            const bs = Composite.allBodies(eng.world).filter(b => !b.isStatic);
+            Composite.remove(eng.world, bs);
+            cnt = 0;
+            disp.textContent = 0;
+        }
+        
+        Render.run(rdr);
+        Runner.run(Runner.create(), eng);
+        
+        setTimeout(() => addBalls(20), 500);
+    </script>
+</body>
+</html>

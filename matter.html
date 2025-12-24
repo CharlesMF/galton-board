@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>互動式高爾頓板 (Galton Board)</title>
+    <!-- 引入 Matter.js 物理引擎 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body {
+            font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+            background-color: #1a1a1a;
+            color: #eee;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        h1 {
+            margin: 10px 0;
+            font-size: 24px;
+            color: #00bcd4;
+        }
+
+        .controls {
+            background-color: #333;
+            padding: 10px 20px;
+            border-radius: 8px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .stat-box {
+            font-family: monospace;
+            font-size: 14px;
+            color: #888;
+        }
+        
+        #ballCountDisplay {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        .btn-start { background-color: #4CAF50; color: white; }
+        .btn-start:hover { background-color: #45a049; }
+
+        .btn-reset { background-color: #f44336; color: white; }
+        .btn-reset:hover { background-color: #d32f2f; }
+
+        .btn-add { background-color: #2196F3; color: white; }
+        .btn-add:hover { background-color: #0b7dda; }
+
+        #canvas-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        /* 說明文字 */
+        .info {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1> 互動式高爾頓板 (Interactive Galton Board)</h1>
+
+    <div class="controls">
+        <div class="stat-box">球數: <span id="ballCountDisplay">0</span></div>
+        <button class="btn-add" onclick="addBalls(100)">+100 顆球</button>
+        <button class="btn-add" onclick="addBalls(500)">+500 顆球</button>
+        <button class="btn-reset" onclick="resetBoard()">重置 (Reset)</button>
+    </div>
+
+    <div id="canvas-container"></div>
+    <div class="info">Powered by Matter.js Physics Engine | 觀察常態分佈形成</div>
+
+    <script>
+        // --- 1. 設定物理引擎 (Matter.js Setup) ---
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Composite = Matter.Composite,
+              Bodies = Matter.Bodies,
+              Events = Matter.Events,
+              Common = Matter.Common;
+
+        // 建立引擎
+        const engine = Engine.create();
+        // 調整時間步長以獲得更穩定的模擬
+        engine.timing.timeScale = 1;
+        // 增加重力讓球更快落下
+        engine.gravity.y = 1.5;
+        // 提高物理引擎精度
+        engine.positionIterations = 10;
+        engine.velocityIterations = 8;
+
+        // 畫布尺寸
+        const width = 600;
+        const height = 800;
+
+        // 建立渲染器
+        const render = Render.create({
+            element: document.getElementById('canvas-container'),
+            engine: engine,
+            options: {
+                width: width,
+                height: height,
+                wireframes: false, // 設為 false 才會顯示顏色
+                background: '#222'
+            }
+        });
+
+        // --- 2. 參數設定 (Config) ---
+        const pinRows = 14;      // 釘子層數 - 增加層數以獲得更好的分佈
+        const pinSize = 3;       // 釘子半徑
+        const pinGap = 38;       // 釘子間距
+        const startY = 100;      // 第一層釘子的 Y 座標
+        const ballSize = 4;      // 球的半徑
+        const restitution = 0.3; // 彈力 - 適度彈性讓球能彈開
+        const friction = 0.05;   // 摩擦力 - 輕微摩擦
+        
+        let ballCount = 0;
+        const ballCountDisplay = document.getElementById('ballCountDisplay');
+
+        // --- 3. 建構場景 (Building the World) ---
+
+        // A. 釘子 (Pins/Pegs) - 三角形排列（高爾頓板標準設計）
+        const pins = [];
+        
+        for (let row = 0; row < pinRows; row++) {
+            // 每層釘子數量遞增，形成三角形
+            const cols = row + 1;
+            
+            for (let col = 0; col < cols; col++) {
+                // 計算 x 座標: 讓每一行都置中
+                const x = (width / 2) - ((cols - 1) * pinGap / 2) + (col * pinGap);
+                const y = startY + row * 40; // 垂直間距
+
+                const pin = Bodies.circle(x, y, pinSize, {
+                    isStatic: true, // 釘子是固定的
+                    render: { fillStyle: '#aaa' },
+                    friction: 0.05,
+                    restitution: 0.3,
+                    label: 'pin'
+                });
+                pins.push(pin);
+            }
+        }
+        Composite.add(engine.world, pins);
+
+        // B. 收集桶 (Bins/Buckets)
+        const binHeight = 250;
+        const binY = height - (binHeight / 2);
+        const binWidth = 3;
+        const bins = [];
+        
+        // 根據最後一層釘子決定桶子數量（最後一層有 pinRows 個釘子）
+        const lastRowPins = pinRows;
+        const binStartX = (width / 2) - ((lastRowPins - 1) * pinGap / 2) - (pinGap / 2);
+
+        for (let i = 0; i <= lastRowPins; i++) {
+            const x = binStartX + i * pinGap;
+            const binWall = Bodies.rectangle(x, binY + 20, binWidth, binHeight, {
+                isStatic: true,
+                render: { fillStyle: '#444' },
+                label: 'binWall'
+            });
+            bins.push(binWall);
+        }
+        
+        // 地板
+        const ground = Bodies.rectangle(width / 2, height + 10, width, 60, { 
+            isStatic: true,
+            render: { fillStyle: '#222' } 
+        });
+        
+        // 左右邊界牆，防止球飛出
+        const leftWall = Bodies.rectangle(-10, height/2, 20, height, {
+            isStatic: true,
+            render: { fillStyle: '#222' }
+        });
+        const rightWall = Bodies.rectangle(width + 10, height/2, 20, height, {
+            isStatic: true,
+            render: { fillStyle: '#222' }
+        });
+        
+        Composite.add(engine.world, [...bins, ground, leftWall, rightWall]);
+
+        // --- 4. 功能函數 ---
+
+        // 產生球的函數
+        function spawnBall() {
+            // 完全從正中央落下，碰到第一個釘子再隨機分左右
+            const ball = Bodies.circle(width / 2, 50, ballSize, {
+                restitution: restitution, // 彈性
+                friction: friction,
+                frictionAir: 0.005, // 空氣阻力
+                density: 0.02, // 密度 - 提高讓球更穩定
+                slop: 0, // 碰撞容差設為0，不允許重疊
+                render: {
+                    fillStyle: getRandomColor()
+                }
+            });
+            Composite.add(engine.world, ball);
+            ballCount++;
+            ballCountDisplay.innerText = ballCount;
+        }
+
+        function addBalls(amount) {
+            let count = 0;
+            const interval = setInterval(() => {
+                spawnBall();
+                count++;
+                if (count >= amount) clearInterval(interval);
+            }, 80); // 每 80ms 產生一顆
+        }
+
+        function resetBoard() {
+            // 移除所有非靜態物體 (即移除所有球)
+            const bodies = Composite.allBodies(engine.world);
+            const balls = bodies.filter(body => !body.isStatic);
+            Composite.remove(engine.world, balls);
+            ballCount = 0;
+            ballCountDisplay.innerText = 0;
+        }
+
+        function getRandomColor() {
+            const colors = ['#00bcd4', '#4caf50', '#ffeb3b', '#ff5722', '#e91e63'];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        // --- 5. 啟動引擎 ---
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        // 初始先丟幾顆示範
+        setTimeout(() => addBalls(10), 500);
+
+    </script>
+</body>
+</html>
